@@ -2,7 +2,7 @@ config:
     # in distribution dataset
     id_dataset: "cifar10"
     # out-of-distribution datasets
-    ood_datasets: ["lsuncrop", "lsunresize", "isun", "textures"]
+    ood_datasets: ["lsuncrop", "lsunresize", "isun"]
     # model
     model_name: "densenet100"
     # path to checkpoint from which to be restored
