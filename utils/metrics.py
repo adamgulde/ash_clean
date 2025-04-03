@@ -47,6 +47,25 @@ def cal_metric(known, novel, method=None):
     return results
 
 def get_curve(known, novel, method=None):
+    """
+    Computes the true positive (TP) and false positive (FP) rates for a given set of 
+    in-distribution (known) and out-of-distribution (novel) scores, along with the 
+    false positive rate at 95% true positive rate (FPR@TPR95).
+
+    Args:
+        known (numpy.ndarray): Array of scores for in-distribution samples.
+        novel (numpy.ndarray): Array of scores for out-of-distribution samples.
+        method (str, optional): Method to determine the threshold. If 'row', a fixed 
+                                threshold of -0.5 is used. Otherwise, the threshold 
+                                is set to the 5th percentile of the sorted in-distribution scores.
+
+    Returns:
+        tuple: A tuple containing:
+            - tp (numpy.ndarray): True positive counts at each threshold.
+            - fp (numpy.ndarray): False positive counts at each threshold.
+            - fpr_at_tpr95 (float): False positive rate at 95% true positive rate.
+    """
+    
     tp, fp = dict(), dict()
     fpr_at_tpr95 = dict()
 
@@ -174,44 +193,52 @@ def compute_average_results(all_results):
     return avg_results
 
 def compute_traditional_ood(base_dir, out_datasets, method):
-    known = np.loadtxt(f'{base_dir}/in_scores.txt', delimiter='\n')
+    # Load the in-distribution scores from a file
+    known = np.genfromtxt(f'{base_dir}/in_scores.txt', delimiter='\n')
 
+    # Sort the in-distribution scores for threshold calculation
     known_sorted = np.sort(known)
-    num_k = known.shape[0]
+    num_k = known.shape[0]  # Number of in-distribution samples
 
+    # Determine the threshold based on the method
     if method == 'rowl':
-        threshold = -0.5
+        threshold = -0.5  # Fixed threshold for 'rowl' method
     else:
+        # Threshold is set to the 5th percentile of the sorted in-distribution scores
         threshold = known_sorted[round(0.05 * num_k)]
 
-    all_results = []
+    all_results = []  # List to store results for each out-of-distribution dataset
+    total = 0.0  # Total number of samples across all out-of-distribution datasets
 
-    total = 0.0
-
+    # Iterate over each out-of-distribution dataset
     for out_dataset in out_datasets:
-        novel = np.loadtxt(f'{base_dir}/{out_dataset}.txt', delimiter='\n')
+        # Load the out-of-distribution scores from a file
+        novel = np.genfromtxt(f'{base_dir}/{out_dataset}.txt', delimiter='\n')
 
-        in_cond = (novel>threshold).astype(np.float32)
-        total += novel.shape[0]
+        # Create a binary condition array based on the threshold
+        in_cond = (novel > threshold).astype(np.float32)
+        total += novel.shape[0]  # Update the total sample count
 
+        # Calculate metrics for the current out-of-distribution dataset
         results = cal_metric(known, novel, method)
-        # results = cal_metric(novel, known , method)
-        all_results.append(results)
+        # results = cal_metric(novel, known , method)  # Alternative metric calculation (commented out)
+        all_results.append(results)  # Append the results to the list
 
+    # Print the results for all out-of-distribution datasets
     print_all_results(all_results, out_datasets, method)
 
 def compute_stat(base_dir, in_dataset, out_datasets, method, name):
     # print('Natural OOD')
     # print('nat_in vs. nat_out')
 
-    known = np.loadtxt('{base_dir}/{in_dataset}/{method}/{name}/in_scores.txt'.format(base_dir=base_dir, in_dataset=in_dataset, method=method, name=name), delimiter='\n')
+    known = np.genfromtxt('{base_dir}/{in_dataset}/{method}/{name}/in_scores.txt'.format(base_dir=base_dir, in_dataset=in_dataset, method=method, name=name), delimiter='\n')
 
     print(f"ID mean: {known.mean()} std: {known.std()}")
 
     all_mean = []
     all_std = []
     for out_dataset in out_datasets:
-        novel = np.loadtxt('{base_dir}/{in_dataset}/{method}/{name}/nat/{out_dataset}/out_scores.txt'.format(base_dir=base_dir, in_dataset=in_dataset, method=method, name=name, out_dataset=out_dataset), delimiter='\n')
+        novel = np.genfromtxt('{base_dir}/{in_dataset}/{method}/{name}/nat/{out_dataset}/out_scores.txt'.format(base_dir=base_dir, in_dataset=in_dataset, method=method, name=name, out_dataset=out_dataset), delimiter='\n')
         all_mean.append(novel.mean())
         all_std.append(novel.std())
 
@@ -219,30 +246,50 @@ def compute_stat(base_dir, in_dataset, out_datasets, method, name):
     return
 
 def compute_in(base_dir, method):
-    known_nat = np.loadtxt(f'{base_dir}/in_scores.txt', delimiter='\n')
-    known_nat_sorted = np.sort(known_nat)
-    num_k = known_nat.shape[0]
+   # Load the in-distribution scores from a file
+    known_nat = np.genfromtxt(f'{base_dir}/in_scores.txt', delimiter='\n')
 
+    # Sort the in-distribution scores for threshold calculation
+    known_nat_sorted = np.sort(known_nat)
+    num_k = known_nat.shape[0]  # Number of in-distribution samples
+
+    # Determine the threshold based on the method
     if method == 'rowl':
-        threshold = -0.5
+        threshold = -0.5  # Fixed threshold for 'rowl' method
     else:
+        # Threshold is set to the 5th percentile of the sorted in-distribution scores
         threshold = known_nat_sorted[round(0.05 * num_k)]
 
+    # Load the in-distribution labels from a file
     known_nat_label = np.loadtxt(f'{base_dir}/in_labels.txt')
 
-    nat_in_cond = (known_nat>threshold).astype(np.float32)
-    nat_correct = (known_nat_label[:,0] == known_nat_label[:,1]).astype(np.float32)
-    nat_conf = np.mean(known_nat_label[:,2])
+    # Create a binary condition array based on the threshold
+    nat_in_cond = (known_nat > threshold).astype(np.float32)
+
+    # Determine whether predictions are correct by comparing labels
+    nat_correct = (known_nat_label[:, 0] == known_nat_label[:, 1]).astype(np.float32)
+
+    # Calculate the average confidence score
+    nat_conf = np.mean(known_nat_label[:, 2])
+
+    # Calculate conditional accuracy (accuracy for samples above the threshold)
     known_nat_cond_acc = np.sum(nat_correct * nat_in_cond) / max(np.sum(nat_in_cond), 1)
+
+    # Calculate overall accuracy
     known_nat_acc = np.mean(nat_correct)
-    known_nat_cond_fnr = np.sum(nat_correct * (1.0 - nat_in_cond)) / max(np.sum(nat_correct),1)
+
+    # Calculate conditional false negative rate (FNR) for samples above the threshold
+    known_nat_cond_fnr = np.sum(nat_correct * (1.0 - nat_in_cond)) / max(np.sum(nat_correct), 1)
+
+    # Calculate overall false negative rate (FNR)
     known_nat_fnr = np.mean((1.0 - nat_in_cond))
+
+    # Calculate end-to-end accuracy (accuracy for samples above the threshold)
     known_nat_eteacc = np.mean(nat_correct * nat_in_cond)
 
-    # print('In-distribution performance:')
-    print('FNR: {fnr:6.2f}, Acc: {acc:6.2f}, End-to-end Acc: {eteacc:6.2f}'.format(fnr=known_nat_fnr*100,acc=known_nat_acc*100,eteacc=known_nat_eteacc*100))
-    # print('\t{acc:6.2f}, {eteacc:6.2f}'.format(fnr=known_nat_fnr*100,acc=known_nat_acc*100,eteacc=known_nat_eteacc*100))
-
+    # Print the calculated metrics for in-distribution performance
+    print('FNR: {fnr:6.2f}, Acc: {acc:6.2f}, End-to-end Acc: {eteacc:6.2f}'.format(
+        fnr=known_nat_fnr * 100, acc=known_nat_acc * 100, eteacc=known_nat_eteacc * 100))
     return
 
 
